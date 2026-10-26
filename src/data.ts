@@ -27,7 +27,7 @@ export interface Store {
 }
 export interface Ui {
   name?: string; kids: string[]; dark?: boolean; workoutDays: number[]; workoutTime: string; dinnerTime: string;
-  socialTarget: number; kindSeen?: string; kidHelper?: boolean; breath?: "box" | "478";
+  socialTarget: number; kindSeen?: string; kidHelper?: boolean; breath?: "box" | "478"; inspireSeen?: string;
 }
 
 export const STORE_KEY = "adhdad-v1";

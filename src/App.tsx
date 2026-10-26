@@ -3,6 +3,7 @@ import React, { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { BottomNav, CARD, I, Icon, IconDot, MenuRow, NAV_BOTTOM, NAV_H, ScreenTitle, SectionTitle, StatCard, Bar, Chip, Thumb, Tick, WorkoutCard } from "./Shell";
 import { Section, Segmented, Callout, BulletList, LinkCards, useGrokTheme } from "./kit";
 import { DemoBlock, demoThumb } from "./Demo";
+import { InspirePage, InspireCard } from "./Inspire";
 import { FEDB_USED } from "./demos.generated";
 import { streakInfo, isoDay, plusDays, weekKey, levelOf, LEVELS, XP, CAP, rollReward, BADGES, ADVENTURES, DAD_JOKES, IF_THEN_DEFAULT, WHY_SOURCES, AFFIRMATIONS_KIDS, AFFIRMATIONS_PARTNER, QUESTIONS, GRATITUDE_PROMPTS, bossOf, rotate, dayIndex, patternNotes, parseMinutes, fmtMin } from "./adhd";
 import { Store, Ui, DayRec, Chore, Reminder, STORE_KEY, UI_KEY, DEFAULT_UI, DEFAULT_CHORES, DEFAULT_REMINDERS, REM_MIN, TODAY_ITEMS, MINABLE, CONNECT_MOMENTS, EXERCISES, SNACK_MOVES, WORKOUTS, FULL, MINV, DAY_SHORT, DAY_LONG, WEEK_ORDER, FALLBACK_TINY } from "./data";
@@ -147,6 +148,8 @@ export default function App() {
   const [ui, setUi] = useState<Ui>(loadUi());
   const [now, setNow] = useState<Date>(new Date());
   const [nav, setNav] = useState<string>("home");
+  // Opening page: daily inspiration, shown on the first launch of each day (flag lives in adhdad-ui).
+  const [inspire, setInspire] = useState<"open" | "view" | null>(() => (loadUi().inspireSeen === isoDay(new Date()) ? null : "open"));
   const [page, setPage] = useState<string | null>(null);
   const [famTab, setFamTab] = useState<string>("chores");
   const [mindTab, setMindTab] = useState<string>("checkin");
@@ -367,6 +370,7 @@ export default function App() {
         </button>
         <button onClick={() => setPage("more")} aria-label="More" style={{ width: 44, height: 44, borderRadius: 22, border: "none", background: "var(--card)", boxShadow: "var(--shadow)", color: "var(--text)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flex: "0 0 auto" }}>{I("more", 20)}</button>
       </div>
+      <InspireCard onOpen={() => setInspire("view")} />
       {kindCard}
       <div style={{ borderRadius: 24, background: "var(--nav)", color: "#fff", padding: 18, display: "grid", gap: 12, boxShadow: "var(--shadow)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -837,6 +841,7 @@ export default function App() {
       <ScreenTitle title={moreTitles[page]} sub={page === "more" ? `${lvl.cur.name} · ${xp} XP` : undefined} onBack={() => setPage(page === "more" ? null : "more")} />
       {page === "more" && (
         <div style={{ display: "grid", gap: 10 }}>
+          <MenuRow icon="sun" title="Daily inspiration" sub="Preach the Gospel, Psalm 103:13, Brunson, Mets" onClick={() => setInspire("view")} />
           <MenuRow icon="settings" title="Settings" sub="Name, kids, workout days, social target, dark mode" onClick={() => setPage("settings")} />
           <MenuRow icon="award" title="Badge shelf" sub={`${owned.size} of ${BADGES.length} badges · ${advs.length} adventures`} onClick={() => setPage("badges")} />
           <MenuRow icon="download" title="Backup" sub="Export or import your data" onClick={() => setPage("backup")} />
@@ -937,6 +942,11 @@ export default function App() {
     : sheet.kind === "floor"
     ? { title: "5-minute floor play", sub: "Their game, their rules. Phone in another room.", secs: 300, doneLabel: "Log floor play", onDone: () => { if (!rec.c["x:floor"]) toggle("x:floor", 10); } }
     : { title: "10 min special time", sub: "One kid, their choice, no phone, no teaching.", secs: 600, doneLabel: "Done", onDone: () => {} };
+
+  if (inspire) {
+    const t = isoDay(new Date());
+    return <InspirePage opening={inspire === "open"} dateLabel={`${DAY_LONG[new Date().getDay()]} ${shortDate(new Date())}`} onDone={() => { if (inspire === "open") { setNav("home"); setPage(null); } if (ui.inspireSeen !== t) setUi({ ...ui, inspireSeen: t }); setInspire(null); window.scrollTo(0, 0); }} />;
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)" }}>
