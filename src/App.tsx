@@ -7,6 +7,8 @@ import { InspirePage, InspireCard } from "./Inspire";
 import { FEDB_USED } from "./demos.generated";
 import { streakInfo, isoDay, plusDays, weekKey, levelOf, LEVELS, XP, CAP, rollReward, BADGES, ADVENTURES, DAD_JOKES, IF_THEN_DEFAULT, WHY_SOURCES, AFFIRMATIONS_KIDS, AFFIRMATIONS_PARTNER, QUESTIONS, GRATITUDE_PROMPTS, bossOf, rotate, dayIndex, patternNotes, parseMinutes, fmtMin } from "./adhd";
 import { Store, Ui, DayRec, Chore, Reminder, STORE_KEY, UI_KEY, DEFAULT_UI, DEFAULT_CHORES, DEFAULT_REMINDERS, REM_MIN, TODAY_ITEMS, MINABLE, CONNECT_MOMENTS, EXERCISES, SNACK_MOVES, WORKOUTS, FULL, MINV, DAY_SHORT, DAY_LONG, WEEK_ORDER, FALLBACK_TINY } from "./data";
+import { useCloud } from "./sync/cloud";
+import { AccountCard, HouseholdCard } from "./sync/AccountCard";
 import { Ring, ModeSwitch, PillButton, TapItem, CapNote, NextChip, SessionTimer, TimerSheet, Toast, Rating, TrendChart, Breather, ModeChip, DayPicker, fieldStyle, hm, fmtHour, fmtIn, mmss } from "./ui";
 
 // ---------- storage ----------
@@ -149,6 +151,8 @@ export default function App() {
   const [now, setNow] = useState<Date>(new Date());
   const [nav, setNav] = useState<string>("home");
   // Opening page: daily inspiration, shown on the first launch of each day (flag lives in adhdad-ui).
+  // Optional cloud sync (Settings › Account). Local-first: works without signing in.
+  const cloud = useCloud("adhdad", store, ui, (s, u) => { setStore(s); setUi(u); }, normalize, normUi);
   const [inspire, setInspire] = useState<"open" | "view" | null>(() => (loadUi().inspireSeen === isoDay(new Date()) ? null : "open"));
   const [page, setPage] = useState<string | null>(null);
   const [famTab, setFamTab] = useState<string>("chores");
@@ -188,7 +192,8 @@ export default function App() {
   const pushToast = (t: any) => setToasts((q) => [...q, t].slice(-3));
   useEffect(() => { if (lvl.idx > lvlRef.current) pushToast({ title: `Level up: ${lvl.cur.name}`, body: lvl.cur.blurb, icon: "trophy", meta: `LEVEL ${lvl.idx + 1}` }); lvlRef.current = lvl.idx; }, [lvl.idx]);
   const kidName = (i: number) => (ui.kids[i] || "").trim() || `Kid ${i + 1}`;
-  const whoLabel = (w: string) => (w === "dad" ? (ui.name || "Dad") : w === "all" ? "Everyone" : w.startsWith("kid") ? kidName(Number(w.slice(3))) : w);
+  const momName = ((cloud.members.find((m) => m.app === "adhdiva") || {}) as any).display_name || "Mom";
+  const whoLabel = (w: string) => (w === "dad" ? (ui.name || "Dad") : w === "mom" ? momName : w === "all" ? "Everyone" : w.startsWith("kid") ? kidName(Number(w.slice(3))) : w);
 
   // ---------- day mutations ----------
   const patchDay = (fn: (r: DayRec) => DayRec, date = todayIso) => setStore((s) => { const cur = s.days[date] || EMPTY_DAY; return { ...s, days: { ...s.days, [date]: fn({ ...cur, c: { ...cur.c }, mode: { ...(cur.mode || {}) }, min: { ...(cur.min || {}) } }) } }; });
@@ -273,7 +278,7 @@ export default function App() {
   const startMinimum = () => { patchDay((r) => { const m = { ...r.mode }; [...MINABLE, "move", "snack"].forEach((k) => (m[k] = "min")); return { ...r, mode: m }; }); setUi({ ...ui, kindSeen: todayIso }); setPage(null); setNav("today"); };
 
   // top 3
-  const whoRank = (w: string) => (w === "dad" ? 0 : w === "all" ? 1 : 2);
+  const whoRank = (w: string) => (w === "dad" ? 0 : w === "all" ? 1 : w === "mom" ? 3 : 2);
   const topChore = dueChores.filter((c) => !rec.c[`chore:${c.id}`]).sort((a, b) => whoRank(a.who) - whoRank(b.who))[0] || dueChores[0];
   const moment = rotate(CONNECT_MOMENTS, now);
   const momentLabel = moment.key === "rem:ask" ? `Ask: "${question}"` : moment.key === "x:gratitude" ? `Gratitude round: ${rotate(GRATITUDE_PROMPTS, now).toLowerCase()}` : moment.label;
@@ -450,7 +455,7 @@ export default function App() {
   // ---------- Family ----------
   const updChore = (id: string, p: Partial<Chore>) => setStore((s) => ({ ...s, chores: s.chores.map((c) => (c.id === id ? { ...c, ...p } : c)) }));
   const updRem = (id: string, p: Partial<Reminder>) => setStore((s) => ({ ...s, reminders: s.reminders.map((c) => (c.id === id ? { ...c, ...p } : c)) }));
-  const whoOpts = ["dad", ...ui.kids.map((_, i) => `kid${i}`), "all"];
+  const whoOpts = ["dad", ...(cloud.household || store.chores.some((c) => c.who === "mom") ? ["mom"] : []), ...ui.kids.map((_, i) => `kid${i}`), "all"];
   const dayList = (days: number[]) => WEEK_ORDER.filter((d) => days.indexOf(d) >= 0).map((d) => DAY_SHORT[d]).join(", ");
   const freqText = (c: Chore) => (c.freq === "daily" ? "Daily" : c.freq === "weekly" ? "Weekly" : c.days.length === 7 ? "Daily" : dayList(c.days) || "No days set");
   const trashBtn = (label: string, onClick: () => void) => <button onClick={onClick} aria-label={label} style={{ width: 46, height: 46, flex: "0 0 auto", borderRadius: 23, border: "none", background: "var(--fill2)", color: "var(--text2)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>{I("trash", 17)}</button>;
@@ -842,16 +847,18 @@ export default function App() {
       {page === "more" && (
         <div style={{ display: "grid", gap: 10 }}>
           <MenuRow icon="sun" title="Daily inspiration" sub="Preach the Gospel, Psalm 103:13, Brunson, Mets" onClick={() => setInspire("view")} />
-          <MenuRow icon="settings" title="Settings" sub="Name, kids, workout days, social target, dark mode" onClick={() => setPage("settings")} />
+          <MenuRow icon="settings" title="Settings" sub={cloud.session ? `${cloud.email} · household, name, kids, dark mode` : "Sign in to sync, household, name, kids, dark mode"} onClick={() => setPage("settings")} />
           <MenuRow icon="award" title="Badge shelf" sub={`${owned.size} of ${BADGES.length} badges · ${advs.length} adventures`} onClick={() => setPage("badges")} />
           <MenuRow icon="download" title="Backup" sub="Export or import your data" onClick={() => setPage("backup")} />
           <MenuRow icon="bulb" title="Why it works" sub="The plain-language science" onClick={() => setPage("why")} />
           <MenuRow icon="info" title="Credits" sub="Exercise images and icons" onClick={() => setPage("credits")} />
-          <div style={{ fontSize: 12, color: "var(--text3)", textAlign: "center", padding: 8 }}>ADHDad · everything stays on this phone · no accounts, no tracking</div>
+          <div style={{ fontSize: 12, color: "var(--text3)", textAlign: "center", padding: 8 }}>{cloud.session ? "ADHDad · synced to your account · no tracking" : "ADHDad · everything stays on this phone · no tracking"}</div>
         </div>
       )}
       {page === "settings" && (
         <Fragment>
+          <AccountCard cloud={cloud} appName="ADHDad" partnerApp="ADHDiva" />
+          <HouseholdCard cloud={cloud} partnerApp="ADHDiva" />
           <Section heading="You">
             <label style={{ display: "grid", gap: 6 }}>{fieldLabel('Shown on Home as "Hi, ..."')}<input value={ui.name || ""} placeholder="Dad" onChange={(e) => setUi({ ...ui, name: e.target.value })} style={fieldStyle} /></label>
           </Section>
@@ -902,7 +909,7 @@ export default function App() {
         </Fragment>
       )}
       {page === "backup" && (
-        <Section heading="Backup" caption="Everything lives on this phone only (no account, no server). Export now and then; import to restore or move to a new phone.">
+        <Section heading="Backup" caption={cloud.session ? "Your data also syncs to your account. A backup file is still a good safety net." : "Everything lives on this phone only unless you sign in to sync (Settings). Export now and then; import to restore or move to a new phone."}>
           <BackupBox store={store} ui={ui} onImport={(s, u) => { setStore(s); if (u) setUi(u); }} />
         </Section>
       )}
@@ -931,7 +938,7 @@ export default function App() {
             <div style={{ fontSize: 13, lineHeight: "19px", color: "var(--text3)" }}>{FEDB_USED.join(" · ")}</div>
           </Section>
           <Section heading="Icons and design">{para("Line icons are inline SVGs adapted from Lucide (ISC license). The design system is shared with the Golf Speed Plan app.")}</Section>
-          <Section heading="Privacy">{para("No backend, no analytics, no tracking. Your data is stored in this browser's localStorage on this phone only.")}</Section>
+          <Section heading="Privacy">{para("No analytics, no tracking. Your data is stored on this phone. If you sign in (optional), it is also saved to your own Supabase account; mood, check-ins, phone use and notes are visible only to you, and only chores and kids' names are shared with a household you join.")}</Section>
         </Fragment>
       )}
     </Fragment>
